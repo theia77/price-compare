@@ -8,6 +8,7 @@ const { supabase } = require("../services/supabase");
 
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
   const { email, password, displayName } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
@@ -25,6 +26,7 @@ router.post("/signup", async (req, res) => {
 
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
@@ -37,12 +39,14 @@ router.post("/login", async (req, res) => {
 
 // POST /api/auth/logout
 router.post("/logout", async (req, res) => {
+  if (!supabase) return res.json({ success: true });
   await supabase.auth.signOut();
   res.json({ success: true });
 });
 
 // GET /api/auth/me  — returns current user from token
 router.get("/me", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
   const header = req.headers.authorization || "";
   const token  = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "No token" });

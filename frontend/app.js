@@ -5,7 +5,7 @@ const API_BASE = "http://localhost:5000/api";
 const PLATFORM_META = {
   amazon:   { label: "Amazon",   icon: "🛒" },
   flipkart: { label: "Flipkart", icon: "🛍️" },
-  ebay:     { label: "eBay",     icon: "🏷️" },
+  google:   { label: "Google",   icon: "🔎" },
   // Add more here as you add APIs in the backend
 };
 
@@ -44,7 +44,7 @@ async function init() {
     state.availablePlatforms = data.platforms || [];
   } catch {
     // If backend isn't reachable yet, fall back to defaults
-    state.availablePlatforms = ["amazon", "flipkart", "ebay"];
+    state.availablePlatforms = ["amazon", "flipkart", "google"];
   }
 }
 init();
@@ -88,7 +88,8 @@ function renderPlatformPicker() {
       <span class="chip-icon">${meta.icon}</span>
       <span class="chip-label">${meta.label}</span>
     `;
-    chip.addEventListener("change", (e) => {
+    const input = chip.querySelector("input");
+    input.addEventListener("change", (e) => {
       if (e.target.checked) {
         state.selectedPlatforms.add(key);
         chip.classList.add("selected");

@@ -4,10 +4,11 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY  // service key — never expose to frontend
-);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase =
+  supabaseUrl && supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
 // ──────────────────────────────────────────────────────────────
 // CACHE
@@ -23,6 +24,7 @@ function makeCacheKey(query, platforms) {
 }
 
 async function getCachedResults(query, platforms) {
+  if (!supabase) return null;
   const key = makeCacheKey(query, platforms);
 
   const { data, error } = await supabase
@@ -37,7 +39,7 @@ async function getCachedResults(query, platforms) {
   // Bump hit count (fire and forget)
   supabase
     .from("result_cache")
-    .update({ hit_count: supabase.rpc("hit_count + 1") })
+    .update({ hit_count: (data.hit_count || 0) + 1 })
     .eq("id", data.id)
     .then(() => {});
 
@@ -45,6 +47,7 @@ async function getCachedResults(query, platforms) {
 }
 
 async function setCachedResults(query, platforms, results) {
+  if (!supabase) return;
   const key = makeCacheKey(query, platforms);
   const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
@@ -69,6 +72,7 @@ async function setCachedResults(query, platforms, results) {
 // ──────────────────────────────────────────────────────────────
 
 async function logSearch(userId, query, platforms, resultCount) {
+  if (!supabase) return;
   const { error } = await supabase.from("search_history").insert({
     user_id:      userId || null,
     query:        query.trim().toLowerCase(),
@@ -79,6 +83,7 @@ async function logSearch(userId, query, platforms, resultCount) {
 }
 
 async function getUserSearchHistory(userId, limit = 20) {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("search_history")
     .select("id, query, platforms, result_count, searched_at")
@@ -95,6 +100,7 @@ async function getUserSearchHistory(userId, limit = 20) {
 // ──────────────────────────────────────────────────────────────
 
 async function getUserWishlists(userId) {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("wishlists")
     .select("id, name, created_at, wishlist_items(count)")
@@ -106,6 +112,7 @@ async function getUserWishlists(userId) {
 }
 
 async function createWishlist(userId, name = "My Wishlist") {
+  if (!supabase) throw new Error("Supabase is not configured");
   const { data, error } = await supabase
     .from("wishlists")
     .insert({ user_id: userId, name })
@@ -117,6 +124,7 @@ async function createWishlist(userId, name = "My Wishlist") {
 }
 
 async function addToWishlist(userId, wishlistId, product) {
+  if (!supabase) throw new Error("Supabase is not configured");
   const { data, error } = await supabase
     .from("wishlist_items")
     .insert({
@@ -136,6 +144,7 @@ async function addToWishlist(userId, wishlistId, product) {
 }
 
 async function removeFromWishlist(userId, itemId) {
+  if (!supabase) throw new Error("Supabase is not configured");
   const { error } = await supabase
     .from("wishlist_items")
     .delete()
@@ -146,6 +155,7 @@ async function removeFromWishlist(userId, itemId) {
 }
 
 async function getWishlistItems(userId, wishlistId) {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("wishlist_items")
     .select("*")
@@ -162,6 +172,7 @@ async function getWishlistItems(userId, wishlistId) {
 // ──────────────────────────────────────────────────────────────
 
 async function getUserFromToken(token) {
+  if (!supabase) return null;
   if (!token) return null;
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) return null;
