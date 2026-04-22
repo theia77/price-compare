@@ -104,7 +104,7 @@ async function searchOnHost(query, platform) {
   }
 
   const { data } = await axios.get(`https://${RAPIDAPI_HOST}/search`, {
-    params: { q: query, query, platform, limit: 12 },
+    params: { q: query, platform, limit: 12 },
     headers: rapidHeaders(),
     timeout: 15000,
   });

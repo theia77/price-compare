@@ -29,19 +29,12 @@ async function getCachedResults(query, platforms) {
 
   const { data, error } = await supabase
     .from("result_cache")
-    .select("id, results, hit_count")
+    .select("results")
     .eq("cache_key", key)
     .gt("expires_at", new Date().toISOString())
     .single();
 
   if (error || !data) return null;
-
-  // Bump hit count (fire and forget)
-  supabase
-    .from("result_cache")
-    .update({ hit_count: (data.hit_count || 0) + 1 })
-    .eq("id", data.id)
-    .then(() => {});
 
   return data.results;
 }
