@@ -1,8 +1,13 @@
 // frontend/auth.js
 // Handles login/signup UI and wishlist interactions on the frontend.
 // Add <script src="auth.js"></script> after app.js in index.html
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 const API = "http://localhost:5000/api";
+const supabase = createClient(
+  "https://ajxixspybcjegualqwak.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqeGl4c3B5YmNqZWd1YWxxd2FrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzM4ODAsImV4cCI6MjA5MjM0OTg4MH0.o4KDD06HrlFEquQMM5_lE22OjK9Q_Q2dorWdRYeZKUg"
+);
 
 // ── Token storage (sessionStorage keeps it tab-local) ────────────────────────
 function saveToken(token) { sessionStorage.setItem("ps_token", token); }
@@ -16,51 +21,46 @@ function authHeaders() {
 
 // ── Auth API calls ────────────────────────────────────────────────────────────
 async function signup(email, password, displayName) {
-  const res  = await fetch(`${API}/auth/signup`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, displayName }),
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { display_name: displayName || "" } },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  if (error) throw new Error(error.message);
+  if (!data.session?.access_token) {
+    throw new Error("Signup succeeded. Please verify your email, then log in.");
+  }
   saveToken(data.session.access_token);
   return data.user;
 }
 
 async function login(email, password) {
-  const res  = await fetch(`${API}/auth/login`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
   saveToken(data.session.access_token);
   return data.user;
 }
 
 async function loginWithGoogle() {
   const redirectTo = window.location.origin + window.location.pathname;
-  const res = await fetch(`${API}/auth/google?redirectTo=${encodeURIComponent(redirectTo)}`);
-  const data = await res.json();
-  if (!res.ok || !data.url) throw new Error(data.error || "Google login failed");
-  window.location.href = data.url;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
+  });
+  if (error) throw new Error(error.message || "Google login failed");
+  if (data?.url) window.location.href = data.url;
 }
 
 async function logout() {
-  await fetch(`${API}/auth/logout`, {
-    method:  "POST",
-    headers: authHeaders(),
-  });
+  await supabase.auth.signOut();
   clearToken();
   updateAuthUI(null);
 }
 
 async function getMe() {
   if (!getToken()) return null;
-  const res  = await fetch(`${API}/auth/me`, { headers: authHeaders() });
-  if (!res.ok) { clearToken(); return null; }
-  const data = await res.json();
+  const { data, error } = await supabase.auth.getUser(getToken());
+  if (error || !data?.user) { clearToken(); return null; }
   return data.user;
 }
 
@@ -395,6 +395,8 @@ function readOAuthTokenFromUrl() {
   injectAuthBar();
   const oauthToken = readOAuthTokenFromUrl();
   if (oauthToken) saveToken(oauthToken);
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) saveToken(session.access_token);
   const user = await getMe();
   updateAuthUI(user);
 })();
