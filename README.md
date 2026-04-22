@@ -1,6 +1,6 @@
 # PriceScout — Multi-Platform Price Comparison
 
-Compare product prices across Amazon, Flipkart, eBay (and more) using RapidAPI.
+Compare product prices across Amazon, Flipkart, Google Shopping (and more) using RapidAPI.
 
 ---
 
@@ -62,7 +62,7 @@ Open `frontend/index.html` in your browser.
 ## RapidAPI Setup
 
 1. Create a free account at rapidapi.com
-2. Subscribe to APIs for Amazon, Flipkart, eBay (all have free tiers)
+2. Subscribe to APIs for Amazon, Flipkart, Google Shopping (all have free tiers)
 3. Paste your single RapidAPI key into `.env` as `RAPIDAPI_KEY`
 4. Complete `backend/services/rapidapi.js` with your chosen API calls
 
