@@ -39,6 +39,14 @@ async function login(email, password) {
   return data.user;
 }
 
+async function loginWithGoogle() {
+  const redirectTo = window.location.origin + window.location.pathname;
+  const res = await fetch(`${API}/auth/google?redirectTo=${encodeURIComponent(redirectTo)}`);
+  const data = await res.json();
+  if (!res.ok || !data.url) throw new Error(data.error || "Google login failed");
+  window.location.href = data.url;
+}
+
 async function logout() {
   await fetch(`${API}/auth/logout`, {
     method:  "POST",
@@ -160,18 +168,22 @@ function showAuthModal(mode = "login") {
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(0,0,0,0.7);
     display:flex; align-items:center; justify-content:center; z-index:1000;
+    padding: 20px;
   `;
 
   const isLogin = mode === "login";
   modal.innerHTML = `
     <div style="
       background:var(--surface); border:1px solid var(--border);
-      border-radius:16px; padding:36px; width:340px; max-width:90vw;
+      border-radius:16px; padding:36px; width:420px; max-width:90vw;
       font-family:var(--font-body); position:relative;
     ">
       <h2 style="font-family:var(--font-head);font-size:1.3rem;margin-bottom:24px;">
         ${isLogin ? "Log in" : "Create account"}
       </h2>
+
+      <button id="m_google" style="${googleBtnStyle()}">Continue with Google</button>
+      <div style="text-align:center;color:var(--muted);font-size:0.8rem;margin:12px 0 14px;">or use email</div>
 
       ${!isLogin ? `<input id="m_name" type="text" placeholder="Display name"
         style="${inputStyle()}" />` : ""}
@@ -227,6 +239,16 @@ function showAuthModal(mode = "login") {
       }
       updateAuthUI(user);
       modal.remove();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  modal.querySelector("#m_google").addEventListener("click", async () => {
+    const errEl = modal.querySelector("#m_err");
+    errEl.textContent = "";
+    try {
+      await loginWithGoogle();
     } catch (err) {
       errEl.textContent = err.message;
     }
@@ -349,13 +371,30 @@ function btnStyle() {
     padding:12px; border-radius:10px; font-family:var(--font-head);
     font-size:1rem; font-weight:700; cursor:pointer;`;
 }
+function googleBtnStyle() {
+  return `width:100%; background:#fff; color:#222; border:1px solid #ddd;
+    padding:10px 12px; border-radius:10px; font-family:var(--font-body);
+    font-size:0.95rem; font-weight:600; cursor:pointer;`;
+}
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function readOAuthTokenFromUrl() {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const token = params.get("access_token");
+  if (!token) return null;
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  return token;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   injectAuthBar();
+  const oauthToken = readOAuthTokenFromUrl();
+  if (oauthToken) saveToken(oauthToken);
   const user = await getMe();
   updateAuthUI(user);
 })();
