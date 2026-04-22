@@ -21,7 +21,7 @@ function authHeaders() {
 }
 
 function getAuthRedirectUrl() {
-  // Auth callbacks should always return to the frontend entry page.
+  // Force callbacks to this page to avoid falling back to Supabase default Site URL (often localhost).
   return new URL("index.html", window.location.href).href;
 }
 
@@ -72,7 +72,11 @@ async function getMe() {
   if (!_supabase) return null;
   let token = getToken();
   if (!token) {
-    const { data } = await _supabase.auth.getSession();
+    const { data, error } = await _supabase.auth.getSession();
+    if (error) {
+      console.error("Failed to restore auth session:", error.message);
+      return null;
+    }
     token = data?.session?.access_token || null;
     if (token) saveToken(token);
   }
