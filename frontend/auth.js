@@ -1,8 +1,13 @@
 // frontend/auth.js
 // Handles login/signup UI and wishlist interactions on the frontend.
 // Add <script src="auth.js"></script> after app.js in index.html
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 const API = "http://localhost:5000/api";
+const supabase = createClient(
+  "https://ajxixspybcjegualqwak.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqeGl4c3B5YmNqZWd1YWxxd2FrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzM4ODAsImV4cCI6MjA5MjM0OTg4MH0.o4KDD06HrlFEquQMM5_lE22OjK9Q_Q2dorWdRYeZKUg"
+);
 
 // ── Token storage (sessionStorage keeps it tab-local) ────────────────────────
 function saveToken(token) { sessionStorage.setItem("ps_token", token); }
@@ -16,43 +21,46 @@ function authHeaders() {
 
 // ── Auth API calls ────────────────────────────────────────────────────────────
 async function signup(email, password, displayName) {
-  const res  = await fetch(`${API}/auth/signup`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, displayName }),
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { display_name: displayName || "" } },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  if (error) throw new Error(error.message);
+  if (!data.session?.access_token) {
+    throw new Error("Signup succeeded. Please verify your email, then log in.");
+  }
   saveToken(data.session.access_token);
   return data.user;
 }
 
 async function login(email, password) {
-  const res  = await fetch(`${API}/auth/login`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
   saveToken(data.session.access_token);
   return data.user;
 }
 
-async function logout() {
-  await fetch(`${API}/auth/logout`, {
-    method:  "POST",
-    headers: authHeaders(),
+async function loginWithGoogle() {
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
   });
+  if (error) throw new Error(error.message || "Google login failed");
+  if (data?.url) window.location.href = data.url;
+}
+
+async function logout() {
+  await supabase.auth.signOut();
   clearToken();
   updateAuthUI(null);
 }
 
 async function getMe() {
   if (!getToken()) return null;
-  const res  = await fetch(`${API}/auth/me`, { headers: authHeaders() });
-  if (!res.ok) { clearToken(); return null; }
-  const data = await res.json();
+  const { data, error } = await supabase.auth.getUser(getToken());
+  if (error || !data?.user) { clearToken(); return null; }
   return data.user;
 }
 
@@ -160,18 +168,22 @@ function showAuthModal(mode = "login") {
   modal.style.cssText = `
     position:fixed; inset:0; background:rgba(0,0,0,0.7);
     display:flex; align-items:center; justify-content:center; z-index:1000;
+    padding: 20px;
   `;
 
   const isLogin = mode === "login";
   modal.innerHTML = `
     <div style="
       background:var(--surface); border:1px solid var(--border);
-      border-radius:16px; padding:36px; width:340px; max-width:90vw;
+      border-radius:16px; padding:36px; width:420px; max-width:90vw;
       font-family:var(--font-body); position:relative;
     ">
       <h2 style="font-family:var(--font-head);font-size:1.3rem;margin-bottom:24px;">
         ${isLogin ? "Log in" : "Create account"}
       </h2>
+
+      <button id="m_google" style="${googleBtnStyle()}">Continue with Google</button>
+      <div style="text-align:center;color:var(--muted);font-size:0.8rem;margin:12px 0 14px;">or use email</div>
 
       ${!isLogin ? `<input id="m_name" type="text" placeholder="Display name"
         style="${inputStyle()}" />` : ""}
@@ -227,6 +239,16 @@ function showAuthModal(mode = "login") {
       }
       updateAuthUI(user);
       modal.remove();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  modal.querySelector("#m_google").addEventListener("click", async () => {
+    const errEl = modal.querySelector("#m_err");
+    errEl.textContent = "";
+    try {
+      await loginWithGoogle();
     } catch (err) {
       errEl.textContent = err.message;
     }
@@ -349,13 +371,32 @@ function btnStyle() {
     padding:12px; border-radius:10px; font-family:var(--font-head);
     font-size:1rem; font-weight:700; cursor:pointer;`;
 }
+function googleBtnStyle() {
+  return `width:100%; background:#fff; color:#222; border:1px solid #ddd;
+    padding:10px 12px; border-radius:10px; font-family:var(--font-body);
+    font-size:0.95rem; font-weight:600; cursor:pointer;`;
+}
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function readOAuthTokenFromUrl() {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const token = params.get("access_token");
+  if (!token) return null;
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  return token;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   injectAuthBar();
+  const oauthToken = readOAuthTokenFromUrl();
+  if (oauthToken) saveToken(oauthToken);
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) saveToken(session.access_token);
   const user = await getMe();
   updateAuthUI(user);
 })();

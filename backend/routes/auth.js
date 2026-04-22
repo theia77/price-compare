@@ -37,6 +37,23 @@ router.post("/login", async (req, res) => {
   res.json({ user: data.user, session: data.session });
 });
 
+// GET /api/auth/google?redirectTo=http://localhost:3000
+router.get("/google", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
+  const redirectTo = req.query.redirectTo || process.env.FRONTEND_URL || "http://localhost:3000";
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
+  });
+
+  if (error || !data?.url) {
+    return res.status(400).json({ error: error?.message || "Unable to start Google login" });
+  }
+
+  res.json({ url: data.url });
+});
+
 // POST /api/auth/logout
 router.post("/logout", async (req, res) => {
   if (!supabase) return res.json({ success: true });
