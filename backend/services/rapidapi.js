@@ -2,6 +2,7 @@ const axios = require("axios");
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "";
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "real-time-product-search.p.rapidapi.com";
+let warnedMissingKey = false;
 
 const availablePlatforms = ["amazon", "flipkart", "google"];
 
@@ -65,7 +66,13 @@ function normalizeProduct(raw, platform) {
 }
 
 async function searchOnRealTimeProductAPI(query, platform) {
-  if (!RAPIDAPI_KEY) return [];
+  if (!RAPIDAPI_KEY) {
+    if (!warnedMissingKey) {
+      warnedMissingKey = true;
+      console.warn("RAPIDAPI_KEY is missing; search results will be empty.");
+    }
+    return [];
+  }
 
   const { data } = await axios.get("https://real-time-product-search.p.rapidapi.com/search", {
     params: {
@@ -88,7 +95,13 @@ async function searchOnRealTimeProductAPI(query, platform) {
 }
 
 async function searchOnHost(query, platform) {
-  if (!RAPIDAPI_KEY) return [];
+  if (!RAPIDAPI_KEY) {
+    if (!warnedMissingKey) {
+      warnedMissingKey = true;
+      console.warn("RAPIDAPI_KEY is missing; search results will be empty.");
+    }
+    return [];
+  }
 
   const { data } = await axios.get(`https://${RAPIDAPI_HOST}/search`, {
     params: { q: query, query, platform, limit: 12 },
@@ -111,12 +124,16 @@ async function searchPlatform(query, platform) {
   try {
     const products = await searchOnRealTimeProductAPI(query, platform);
     if (products.length > 0) return products;
-  } catch (_) {}
+  } catch (error) {
+    console.warn(`RapidAPI real-time search failed for ${platform}: ${error.message}`);
+  }
 
   try {
     const products = await searchOnHost(query, platform);
     if (products.length > 0) return products;
-  } catch (_) {}
+  } catch (error) {
+    console.warn(`RapidAPI host search failed for ${platform}: ${error.message}`);
+  }
 
   return [];
 }

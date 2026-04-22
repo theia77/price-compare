@@ -29,7 +29,7 @@ async function getCachedResults(query, platforms) {
 
   const { data, error } = await supabase
     .from("result_cache")
-    .select("id, results")
+    .select("id, results, hit_count")
     .eq("cache_key", key)
     .gt("expires_at", new Date().toISOString())
     .single();
