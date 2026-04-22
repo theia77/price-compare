@@ -127,7 +127,7 @@ function injectAuthBar() {
       color:var(--text); padding:6px 14px; border-radius:50px;
       cursor:pointer; font-size:0.82rem;
       transition: border-color 0.2s, color 0.2s;
-    ">Log in</button>
+    ">Sign up / Log in</button>
     <button id="historyBtn" style="
       background:none; border:none; color:var(--muted);
       cursor:pointer; font-size:0.82rem; display:none;
@@ -137,7 +137,7 @@ function injectAuthBar() {
 
   document.getElementById("authActionBtn").addEventListener("click", () => {
     if (getToken()) logout();
-    else showAuthModal("login");
+    else showAuthModal("signup");
   });
 
   document.getElementById("historyBtn").addEventListener("click", showHistoryPanel);
@@ -155,7 +155,7 @@ function updateAuthUI(user) {
     historyBtn.style.display = "inline";
   } else {
     greeting.textContent  = "";
-    actionBtn.textContent = "Log in";
+    actionBtn.textContent = "Sign up / Log in";
     historyBtn.style.display = "none";
   }
 }
@@ -387,9 +387,9 @@ function escHtml(s) {
 }
 
 function redirectToMainPage() {
-  const mainPath = "/frontend/index.html";
-  if (window.location.pathname !== mainPath) {
-    window.location.href = `${window.location.origin}${mainPath}`;
+  const mainPageUrl = new URL("index.html", window.location.href);
+  if (window.location.pathname !== mainPageUrl.pathname) {
+    window.location.assign(mainPageUrl.href);
   }
 }
 
