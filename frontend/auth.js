@@ -260,6 +260,7 @@ function showAuthModal(mode = "login") {
       }
       updateAuthUI(user);
       modal.remove();
+      redirectToMainPage();
     } catch (err) {
       errEl.textContent = err.message;
     }
@@ -385,6 +386,13 @@ function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
+function redirectToMainPage() {
+  const mainPath = "/frontend/index.html";
+  if (window.location.pathname !== mainPath) {
+    window.location.href = `${window.location.origin}${mainPath}`;
+  }
+}
+
 // ── Google OAuth callback — token arrives in URL hash ─────────────────────────
 async function handleOAuthCallback() {
   const hash = window.location.hash;
@@ -394,6 +402,7 @@ async function handleOAuthCallback() {
     if (token) {
       saveToken(token);
       history.replaceState(null, "", window.location.pathname);
+      redirectToMainPage();
       return await getMe();
     }
   }
