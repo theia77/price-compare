@@ -23,14 +23,11 @@ function authHeaders() {
 function getAuthRedirectUrl() {
   // Force callbacks to this app entry page to avoid falling back to Supabase default Site URL (often localhost).
   const current = new URL(window.location.href);
-  const parts = current.pathname.split("/");
-  const lastPart = parts[parts.length - 1];
-  if (!lastPart || !lastPart.includes(".")) {
-    parts.push("index.html");
+  if (current.pathname.endsWith("/")) {
+    current.pathname = `${current.pathname}index.html`;
   } else {
-    parts[parts.length - 1] = "index.html";
+    current.pathname = current.pathname.replace(/\/[^/]*$/, "/index.html");
   }
-  current.pathname = parts.join("/").replace(/\/{2,}/g, "/");
   current.search = "";
   current.hash = "";
   return current.href;
