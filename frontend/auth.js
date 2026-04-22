@@ -21,6 +21,7 @@ function authHeaders() {
 }
 
 function getAuthRedirectUrl() {
+  // Auth callbacks should always return to the frontend entry page.
   return new URL("index.html", window.location.href).href;
 }
 
@@ -400,9 +401,10 @@ function escHtml(s) {
 }
 
 function redirectToMainPage() {
-  const mainPageUrl = new URL(getAuthRedirectUrl());
-  if (window.location.pathname !== mainPageUrl.pathname) {
-    window.location.assign(mainPageUrl.href);
+  const mainPageUrl = getAuthRedirectUrl();
+  const currentUrl = window.location.origin + window.location.pathname;
+  if (currentUrl !== mainPageUrl) {
+    window.location.assign(mainPageUrl);
   }
 }
 
