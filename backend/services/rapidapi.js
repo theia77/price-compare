@@ -1,155 +1,222 @@
 const axios = require("axios");
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "";
-const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || "real-time-product-search.p.rapidapi.com";
-let warnedMissingKey = false;
 
-const availablePlatforms = ["amazon", "flipkart", "google"];
-
-function rapidHeaders(host = RAPIDAPI_HOST) {
-  return {
-    "x-rapidapi-key": RAPIDAPI_KEY,
-    "x-rapidapi-host": host,
-  };
+if (!RAPIDAPI_KEY) {
+  console.warn("WARNING: RAPIDAPI_KEY is not set — search results will be empty.");
 }
 
-function pickImage(raw = {}) {
-  return (
-    raw.product_photo ||
-    raw.thumbnail ||
-    raw.image ||
-    raw.image_url ||
-    raw.productImage ||
-    null
-  );
-}
+// ─────────────────────────────────────────────────────────────
+// AMAZON  — Real-Time Amazon Data
+// host: real-time-amazon-data.p.rapidapi.com
+// ─────────────────────────────────────────────────────────────
+async function searchAmazon(query) {
+  try {
+    const response = await axios.get(
+      "https://real-time-amazon-data.p.rapidapi.com/search",
+      {
+        params: {
+          query,
+          page:                "1",
+          country:             "IN",
+          sort_by:             "RELEVANCE",
+          product_condition:   "ALL",
+          is_prime:            "false",
+          deals_and_discounts: "NONE",
+        },
+        headers: {
+          "x-rapidapi-key":  RAPIDAPI_KEY,
+          "x-rapidapi-host": "real-time-amazon-data.p.rapidapi.com",
+          "Content-Type":    "application/json",
+        },
+      }
+    );
 
-function pickTitle(raw = {}) {
-  return raw.product_title || raw.title || raw.name || "Untitled product";
-}
-
-function pickPrice(raw = {}) {
-  return (
-    raw.offer?.price ||
-    raw.offer?.displayPrice ||
-    raw.product_price ||
-    raw.price ||
-    raw.current_price ||
-    raw.sale_price ||
-    "N/A"
-  );
-}
-
-function pickOriginalPrice(raw = {}) {
-  return raw.typical_price || raw.original_price || raw.mrp || raw.strike_price || null;
-}
-
-function pickRating(raw = {}) {
-  return raw.product_star_rating || raw.rating || raw.stars || null;
-}
-
-function pickUrl(raw = {}) {
-  return raw.product_url || raw.url || raw.link || raw.product_link || null;
-}
-
-function normalizeProduct(raw, platform) {
-  return {
-    platform,
-    title: pickTitle(raw),
-    price: pickPrice(raw),
-    originalPrice: pickOriginalPrice(raw),
-    image: pickImage(raw),
-    rating: pickRating(raw),
-    badge: raw.offer?.store_name || raw.store || raw.badge || null,
-    url: pickUrl(raw),
-  };
-}
-
-async function searchOnRealTimeProductAPI(query, platform) {
-  if (!RAPIDAPI_KEY) {
-    if (!warnedMissingKey) {
-      warnedMissingKey = true;
-      console.warn("RAPIDAPI_KEY is missing; search results will be empty.");
-    }
+    const products = response.data?.data?.products || [];
+    return products.slice(0, 6).map((p) => ({
+      platform:      "Amazon",
+      title:         p.product_title          || "—",
+      price:         p.product_price          || "N/A",
+      originalPrice: p.product_original_price || null,
+      rating:        p.product_star_rating    || null,
+      image:         p.product_photo          || null,
+      url:           p.product_url            || null,
+      badge:         p.is_prime ? "Prime"     : null,
+    }));
+  } catch (err) {
+    console.error("Amazon search error:", err.message);
     return [];
   }
-
-  const { data } = await axios.get("https://real-time-product-search.p.rapidapi.com/search", {
-    params: {
-      q: query,
-      country: "in",
-      language: "en",
-      page: "1",
-      limit: "12",
-      sort_by: "BEST_MATCH",
-      product_condition: "ANY",
-      platform,
-    },
-    headers: rapidHeaders("real-time-product-search.p.rapidapi.com"),
-    timeout: 15000,
-  });
-
-  const items = data?.data?.products || data?.data || [];
-  if (!Array.isArray(items)) return [];
-  return items.map((p) => normalizeProduct(p, platform)).filter((p) => p.title && p.price);
 }
 
-async function searchOnHost(query, platform) {
-  if (!RAPIDAPI_KEY) {
-    if (!warnedMissingKey) {
-      warnedMissingKey = true;
-      console.warn("RAPIDAPI_KEY is missing; search results will be empty.");
-    }
+// ─────────────────────────────────────────────────────────────
+// FLIPKART  — Real-Time Flipkart Data 2
+// host: real-time-flipkart-data2.p.rapidapi.com
+// ─────────────────────────────────────────────────────────────
+async function searchFlipkart(query) {
+  try {
+    const response = await axios.get(
+      "https://real-time-flipkart-data2.p.rapidapi.com/product-search",
+      {
+        params: {
+          q:       query,
+          page:    "1",
+          sort_by: "RELEVANCE",
+        },
+        headers: {
+          "x-rapidapi-key":  RAPIDAPI_KEY,
+          "x-rapidapi-host": "real-time-flipkart-data2.p.rapidapi.com",
+          "Content-Type":    "application/json",
+        },
+      }
+    );
+
+    const products =
+      response.data?.products ||
+      response.data?.data?.products ||
+      response.data?.result ||
+      [];
+
+    return products.slice(0, 6).map((p) => ({
+      platform:      "Flipkart",
+      title:         p.title         || p.name             || "—",
+      price:         p.price         ? `₹${p.price}`       : (p.selling_price ? `₹${p.selling_price}` : "N/A"),
+      originalPrice: p.mrp           ? `₹${p.mrp}`         : (p.original_price ? `₹${p.original_price}` : null),
+      rating:        p.rating        || p.average_rating   || null,
+      image:         p.image         || p.thumbnail        || p.image_url || null,
+      url:           p.url           || p.product_url      || null,
+      badge:         p.assured       ? "F-Assured"         : null,
+    }));
+  } catch (err) {
+    console.error("Flipkart search error:", err.message);
     return [];
   }
-
-  const { data } = await axios.get(`https://${RAPIDAPI_HOST}/search`, {
-    params: { q: query, platform, limit: 12 },
-    headers: rapidHeaders(),
-    timeout: 15000,
-  });
-
-  const items =
-    data?.data?.products ||
-    data?.data?.items ||
-    data?.products ||
-    data?.items ||
-    data?.results ||
-    [];
-  if (!Array.isArray(items)) return [];
-  return items.map((p) => normalizeProduct(p, platform)).filter((p) => p.title);
 }
 
-async function searchPlatform(query, platform) {
+// ─────────────────────────────────────────────────────────────
+// EBAY  — Real-Time eBay Data
+// host: real-time-ebay-data.p.rapidapi.com
+// ─────────────────────────────────────────────────────────────
+async function searchEbay(query) {
   try {
-    const products = await searchOnRealTimeProductAPI(query, platform);
-    if (products.length > 0) return products;
-  } catch (error) {
-    console.warn(`RapidAPI real-time search failed for ${platform}: ${error.message}`);
-  }
+    const response = await axios.get(
+      "https://real-time-ebay-data.p.rapidapi.com/ebay_search",
+      {
+        params: {
+          q:     query,
+          limit: "10",
+        },
+        headers: {
+          "x-rapidapi-key":  RAPIDAPI_KEY,
+          "x-rapidapi-host": "real-time-ebay-data.p.rapidapi.com",
+          "Content-Type":    "application/json",
+        },
+      }
+    );
 
-  try {
-    const products = await searchOnHost(query, platform);
-    if (products.length > 0) return products;
-  } catch (error) {
-    console.warn(`RapidAPI host search failed for ${platform}: ${error.message}`);
-  }
+    const raw = response.data?.result || response.data?.data || response.data?.items || response.data || [];
+    const list = Array.isArray(raw) ? raw : [];
 
-  return [];
+    return list.slice(0, 6).map((p) => ({
+      platform:      "eBay",
+      title:         p.title         || p.name          || "—",
+      price:         p.price         || p.current_price || "N/A",
+      originalPrice: p.original_price || null,
+      rating:        null,
+      image:         p.image         || p.thumbnail     || null,
+      url:           p.url           || p.link          || null,
+      badge:         p.condition     || null,
+    }));
+  } catch (err) {
+    console.error("eBay search error:", err.message);
+    return [];
+  }
 }
 
-async function searchPlatforms(query, platforms = []) {
-  const selected = Array.isArray(platforms) ? platforms : [];
-  const validPlatforms = selected.filter((p) => availablePlatforms.includes(p));
+// ─────────────────────────────────────────────────────────────
+// GOOGLE SHOPPING  — Real-Time Product Search v2
+// host: real-time-product-search.p.rapidapi.com
+// Covers: Croma, Myntra, Nykaa, AJIO, Meesho, Snapdeal,
+//         JioMart, Reliance Digital + 100s more automatically
+// ─────────────────────────────────────────────────────────────
+async function searchGoogleShopping(query) {
+  try {
+    const response = await axios.get(
+      "https://real-time-product-search.p.rapidapi.com/search-v2",
+      {
+        params: {
+          q:                 query,
+          country:           "in",
+          language:          "en",
+          page:              "1",
+          limit:             "10",
+          sort_by:           "BEST_MATCH",
+          product_condition: "ANY",
+          return_filters:    "false",
+        },
+        headers: {
+          "x-rapidapi-key":  RAPIDAPI_KEY,
+          "x-rapidapi-host": "real-time-product-search.p.rapidapi.com",
+          "Content-Type":    "application/json",
+        },
+      }
+    );
 
-  const pairs = await Promise.all(
-    validPlatforms.map(async (platform) => [platform, await searchPlatform(query, platform)])
+    const products =
+      response.data?.data?.products ||
+      response.data?.products       ||
+      response.data?.results        ||
+      [];
+
+    return products.slice(0, 8).map((p) => {
+      const offer     = p.offers?.[0] || {};
+      const store     = offer.store_name || p.source || "Online Store";
+      const price     = offer.price || p.typical_price_range?.[0] || "N/A";
+      const origPrice = offer.original_price || null;
+
+      return {
+        platform:      store,
+        title:         p.product_title       || p.title || "—",
+        price:         typeof price === "number" ? `₹${price}` : price,
+        originalPrice: origPrice ? (typeof origPrice === "number" ? `₹${origPrice}` : origPrice) : null,
+        rating:        p.product_rating      || null,
+        image:         p.product_photos?.[0] || p.thumbnail || null,
+        url:           offer.offer_page_url  || p.product_page_url || null,
+        badge:         offer.store_name      || null,
+      };
+    });
+  } catch (err) {
+    console.error("Google Shopping search error:", err.message);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PLATFORM REGISTRY
+// ─────────────────────────────────────────────────────────────
+const PLATFORMS = {
+  amazon:          searchAmazon,
+  flipkart:        searchFlipkart,
+  ebay:            searchEbay,
+  google_shopping: searchGoogleShopping,
+};
+
+async function searchPlatforms(query, platforms) {
+  const valid = platforms.filter((p) => PLATFORMS[p]);
+
+  const results = await Promise.allSettled(
+    valid.map((p) => PLATFORMS[p](query))
   );
 
-  return Object.fromEntries(pairs);
+  const output = {};
+  valid.forEach((p, i) => {
+    output[p] = results[i].status === "fulfilled" ? results[i].value : [];
+  });
+
+  return output;
 }
 
 module.exports = {
-  availablePlatforms,
   searchPlatforms,
+  availablePlatforms: Object.keys(PLATFORMS),
 };

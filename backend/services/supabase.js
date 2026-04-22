@@ -4,18 +4,18 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase =
-  supabaseUrl && supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey) : null;
+const supabaseUrl        = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase           = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null;
 
 // ──────────────────────────────────────────────────────────────
 // CACHE
 // ──────────────────────────────────────────────────────────────
 
 function makeCacheKey(query, platforms) {
-  const normalized = query.trim().toLowerCase();
+  const normalized  = query.trim().toLowerCase();
   const sortedPlats = [...platforms].sort().join(",");
   return crypto
     .createHash("md5")
@@ -29,19 +29,26 @@ async function getCachedResults(query, platforms) {
 
   const { data, error } = await supabase
     .from("result_cache")
-    .select("results")
+    .select("id, results, hit_count")
     .eq("cache_key", key)
     .gt("expires_at", new Date().toISOString())
     .single();
 
   if (error || !data) return null;
 
+  // Bump hit count (fire and forget)
+  supabase
+    .from("result_cache")
+    .update({ hit_count: (data.hit_count || 0) + 1 })
+    .eq("id", data.id)
+    .then(() => {});
+
   return data.results;
 }
 
 async function setCachedResults(query, platforms, results) {
   if (!supabase) return;
-  const key = makeCacheKey(query, platforms);
+  const key      = makeCacheKey(query, platforms);
   const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
   const { error } = await supabase.from("result_cache").upsert(
@@ -172,6 +179,26 @@ async function getUserFromToken(token) {
   return data.user;
 }
 
+// ──────────────────────────────────────────────────────────────
+// HEALTH CHECK
+// ──────────────────────────────────────────────────────────────
+
+async function checkHealth() {
+  if (!supabase) {
+    return { configured: false, error: "SUPABASE_URL or SUPABASE_SERVICE_KEY not set in .env" };
+  }
+
+  const tables  = ["result_cache", "search_history", "wishlists", "wishlist_items"];
+  const results = {};
+
+  for (const table of tables) {
+    const { error } = await supabase.from(table).select("id").limit(1);
+    results[table] = error ? { ok: false, error: error.message } : { ok: true };
+  }
+
+  return results;
+}
+
 module.exports = {
   supabase,
   getCachedResults,
@@ -184,4 +211,5 @@ module.exports = {
   removeFromWishlist,
   getWishlistItems,
   getUserFromToken,
+  checkHealth,
 };

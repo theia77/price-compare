@@ -1,10 +1,77 @@
 // backend/routes/auth.js
-// Thin wrapper around Supabase Auth — the frontend can also call Supabase directly,
-// but proxying through the backend keeps your Supabase URL hidden from the client.
-
 const express  = require("express");
 const router   = express.Router();
+const crypto   = require("crypto");
 const { supabase } = require("../services/supabase");
+
+// ── PKCE helpers ─────────────────────────────────────────────────────────────
+function generatePKCE() {
+  const verifier  = crypto.randomBytes(32).toString("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
+
+// GET /api/auth/google — redirect browser to Google via Supabase OAuth (PKCE)
+router.get("/google", (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
+
+  const { verifier, challenge } = generatePKCE();
+
+  res.cookie("pkce_verifier", verifier, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge:   10 * 60 * 1000,
+  });
+
+  const callbackUrl = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+  const authUrl     = new URL(`${process.env.SUPABASE_URL}/auth/v1/authorize`);
+  authUrl.searchParams.set("provider",              "google");
+  authUrl.searchParams.set("redirect_to",           callbackUrl);
+  authUrl.searchParams.set("code_challenge",        challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+
+  res.redirect(authUrl.toString());
+});
+
+// GET /api/auth/google/callback — exchange code, redirect frontend with token
+router.get("/google/callback", async (req, res) => {
+  const { code }    = req.query;
+  const verifier    = req.cookies?.pkce_verifier;
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+  res.clearCookie("pkce_verifier");
+
+  if (!code || !verifier) {
+    return res.redirect(`${frontendUrl}?auth_error=missing_params`);
+  }
+
+  try {
+    const tokenRes = await fetch(
+      `${process.env.SUPABASE_URL}/auth/v1/token?grant_type=pkce`,
+      {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey":       process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
+      }
+    );
+
+    const session = await tokenRes.json();
+    if (!tokenRes.ok || !session.access_token) {
+      throw new Error(session.error_description || "Token exchange failed");
+    }
+
+    res.redirect(
+      `${frontendUrl}#access_token=${session.access_token}&token_type=bearer`
+    );
+  } catch (err) {
+    console.error("Google callback error:", err.message);
+    res.redirect(`${frontendUrl}?auth_error=${encodeURIComponent(err.message)}`);
+  }
+});
 
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {
@@ -37,27 +104,20 @@ router.post("/login", async (req, res) => {
   res.json({ user: data.user, session: data.session });
 });
 
-// GET /api/auth/google?redirectTo=http://localhost:3000
-router.get("/google", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Auth service not configured" });
-  const redirectTo = req.query.redirectTo || process.env.FRONTEND_URL || "http://localhost:3000";
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo },
-  });
-
-  if (error || !data?.url) {
-    return res.status(400).json({ error: error?.message || "Unable to start Google login" });
-  }
-
-  res.json({ url: data.url });
-});
-
 // POST /api/auth/logout
 router.post("/logout", async (req, res) => {
   if (!supabase) return res.json({ success: true });
-  await supabase.auth.signOut();
+
+  const header = req.headers.authorization || "";
+  const token  = header.startsWith("Bearer ") ? header.slice(7) : null;
+
+  if (token) {
+    const { data } = await supabase.auth.getUser(token);
+    if (data?.user) {
+      await supabase.auth.admin.signOut(data.user.id);
+    }
+  }
+
   res.json({ success: true });
 });
 

@@ -37,16 +37,7 @@
       </form>
     </section>
 
-    <!-- STEP 2: Platform Picker (shown after search returns) -->
-    <section class="platform-section hidden" id="step-platforms">
-      <h2>Choose platforms to compare</h2>
-      <div class="platform-grid" id="platformGrid">
-        <!-- Populated by JS -->
-      </div>
-      <button class="compare-btn" id="compareBtn">Compare Prices →</button>
-    </section>
-
-    <!-- STEP 3: Results -->
+    <!-- Results -->
     <section class="results-section hidden" id="step-results">
       <div class="results-header">
         <h2>Results for <span id="resultsQuery"></span></h2>
@@ -73,7 +64,9 @@
     <p>Prices fetched live via RapidAPI · Not affiliated with any retailer</p>
   </footer>
 
+  <!-- Supabase CDN (provides window.supabase global for auth.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="app.js"></script>
-  <script type="module" src="auth.js"></script>
+  <script src="auth.js"></script>
 </body>
 </html>
