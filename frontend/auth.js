@@ -1,72 +1,111 @@
-// frontend/auth.js
-// Handles login/signup UI and wishlist interactions.
-// Supabase is loaded as a global via CDN in index.html
+// frontend/auth.js — Auth UI, Supabase client, wishlist API
+// Supabase JS v2 loaded as window.supabase via CDN in index.html
 
 const API = "http://localhost:5000/api";
 
-// Supabase client (anon key is safe to expose — it only has public permissions)
+// ── Supabase client (anon key — safe to expose in frontend) ──────────────────
 const _supabase = window.supabase?.createClient(
   "https://ajxixspybcjegualqwak.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqeGl4c3B5YmNqZWd1YWxxd2FrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzM4ODAsImV4cCI6MjA5MjM0OTg4MH0.o4KDD06HrlFEquQMM5_lE22OjK9Q_Q2dorWdRYeZKUg"
 );
 
 // ── Token storage ─────────────────────────────────────────────────────────────
-function saveToken(token) { sessionStorage.setItem("ps_token", token); }
-function getToken()       { return sessionStorage.getItem("ps_token"); }
-function clearToken()     { sessionStorage.removeItem("ps_token"); }
-
+function saveToken(t) { sessionStorage.setItem("ps_token", t); }
+function getToken()   { return sessionStorage.getItem("ps_token"); }
+function clearToken() { sessionStorage.removeItem("ps_token"); }
 function authHeaders() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const t = getToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+// Builds the URL Supabase should redirect back to after OAuth / email confirm.
+// Always points to index.html on the current origin — avoids falling back to
+// whatever Supabase has set as its "Site URL" (often a stale localhost).
 function getAuthRedirectUrl() {
-  // Force callbacks to this app entry page to avoid falling back to Supabase default Site URL (often localhost).
-  const current = new URL(window.location.href);
-  if (current.pathname.endsWith("/")) {
-    current.pathname = `${current.pathname}index.html`;
-  } else {
-    current.pathname = current.pathname.replace(/\/[^/]*$/, "/index.html");
-  }
-  current.search = "";
-  current.hash = "";
-  return current.href;
+  if (window.location.protocol === "file:") return null; // can't redirect to file://
+  const url = new URL(window.location.href);
+  url.pathname = url.pathname.endsWith("/")
+    ? url.pathname + "index.html"
+    : url.pathname.replace(/\/[^/]*$/, "/index.html");
+  url.search = "";
+  url.hash   = "";
+  return url.href;
 }
 
-// ── Auth API calls ────────────────────────────────────────────────────────────
+// Sentinel value: thrown by signup/login when email verification is required,
+// so the modal can show a green info message instead of a red error.
+const EMAIL_VERIFY_SENTINEL = "__VERIFY_EMAIL__";
+
+// ── Auth functions ────────────────────────────────────────────────────────────
 async function signup(email, password, displayName) {
-  if (!_supabase) throw new Error("Auth not configured");
+  if (!_supabase) throw new Error("Supabase not loaded. Refresh the page.");
+
+  const redirectUrl = getAuthRedirectUrl();
   const { data, error } = await _supabase.auth.signUp({
     email,
     password,
     options: {
       data: { display_name: displayName || "" },
-      emailRedirectTo: getAuthRedirectUrl(),
+      ...(redirectUrl ? { emailRedirectTo: redirectUrl } : {}),
     },
   });
   if (error) throw new Error(error.message);
+
   if (!data.session?.access_token) {
-    throw new Error("Account created! Please verify your email, then log in.");
+    // Email confirmation required — throw sentinel (not a real error)
+    const e = new Error(EMAIL_VERIFY_SENTINEL);
+    e.email = email;
+    throw e;
   }
+
   saveToken(data.session.access_token);
   return data.user;
 }
 
 async function login(email, password) {
-  if (!_supabase) throw new Error("Auth not configured");
+  if (!_supabase) throw new Error("Supabase not loaded. Refresh the page.");
+
   const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(error.message);
+
+  if (error) {
+    // Supabase returns "Invalid login credentials" for BOTH wrong password and
+    // unverified email. Try resend() — if it succeeds, email exists but isn't
+    // confirmed; if it fails, credentials are genuinely wrong.
+    if (
+      error.message.includes("Invalid login credentials") ||
+      error.message.toLowerCase().includes("confirm") ||
+      error.message.toLowerCase().includes("email")
+    ) {
+      const { error: resendErr } = await _supabase.auth.resend({ type: "signup", email });
+      if (!resendErr) {
+        const e = new Error(EMAIL_VERIFY_SENTINEL);
+        e.email = email;
+        throw e;
+      }
+    }
+    throw new Error(error.message || "Login failed. Check your email and password.");
+  }
+
   saveToken(data.session.access_token);
   return data.user;
 }
 
 async function loginWithGoogle() {
-  if (!_supabase) throw new Error("Auth not configured");
+  if (!_supabase) throw new Error("Supabase not loaded. Refresh the page.");
+
+  if (window.location.protocol === "file:") {
+    throw new Error(
+      "Google sign-in needs a web server. In VS Code, right-click index.html → \"Open with Live Server\"."
+    );
+  }
+
+  const redirectTo = getAuthRedirectUrl();
   const { data, error } = await _supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: getAuthRedirectUrl() },
+    options: { redirectTo },
   });
-  if (error) throw new Error(error.message || "Google login failed");
+
+  if (error) throw new Error(error.message || "Google sign-in failed.");
   if (data?.url) window.location.href = data.url;
 }
 
@@ -78,27 +117,30 @@ async function logout() {
 
 async function getMe() {
   if (!_supabase) return null;
+
   let token = getToken();
   if (!token) {
+    // Try to restore a session Supabase already has (e.g. after page refresh)
     const { data, error } = await _supabase.auth.getSession();
-    if (error) {
-      console.error("Failed to restore auth session:", error.message);
-      return null;
+    if (!error && data?.session?.access_token) {
+      token = data.session.access_token;
+      saveToken(token);
     }
-    token = data?.session?.access_token || null;
-    if (token) saveToken(token);
   }
   if (!token) return null;
+
   const { data, error } = await _supabase.auth.getUser(token);
   if (error || !data?.user) { clearToken(); return null; }
   return data.user;
 }
 
-// ── Wishlist API calls (go through backend) ───────────────────────────────────
+// ── Backend API calls (wishlist & history — needs backend running) ────────────
 async function getWishlists() {
-  const res  = await fetch(`${API}/wishlist`, { headers: authHeaders() });
-  const data = await res.json();
-  return data.wishlists || [];
+  try {
+    const res  = await fetch(`${API}/wishlist`, { headers: authHeaders() });
+    const data = await res.json();
+    return data.wishlists || [];
+  } catch { return []; }
 }
 
 async function createWishlist(name) {
@@ -125,35 +167,40 @@ async function addToWishlist(wishlistId, product) {
 
 async function removeFromWishlist(itemId) {
   await fetch(`${API}/wishlist/items/${itemId}`, {
-    method:  "DELETE",
+    method: "DELETE",
     headers: authHeaders(),
   });
 }
 
 async function getSearchHistory() {
-  const res  = await fetch(`${API}/search/history`, { headers: authHeaders() });
-  const data = await res.json();
-  return data.history || [];
+  try {
+    const res  = await fetch(`${API}/search/history`, { headers: authHeaders() });
+    const data = await res.json();
+    return data.history || [];
+  } catch { return []; }
 }
 
-// ── UI ────────────────────────────────────────────────────────────────────────
+// ── Auth bar (top-right) ──────────────────────────────────────────────────────
 function injectAuthBar() {
   const bar = document.createElement("div");
   bar.id = "authBar";
   bar.style.cssText = `
-    position: fixed; top: 0; right: 0;
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 20px; z-index: 999;
-    font-family: var(--font-body); font-size: 0.85rem;
+    position:fixed; top:0; right:0;
+    display:flex; align-items:center; gap:10px;
+    padding:10px 20px; z-index:999;
+    font-family:var(--font-body); font-size:0.85rem;
   `;
   bar.innerHTML = `
     <span id="authGreeting" style="color:var(--muted)"></span>
-    <button id="authActionBtn" style="
-      background:none; border:1px solid var(--border);
-      color:var(--text); padding:6px 14px; border-radius:50px;
-      cursor:pointer; font-size:0.82rem;
-      transition: border-color 0.2s, color 0.2s;
-    ">Sign up / Log in</button>
+    <button id="authSignupBtn" style="
+      background:var(--accent); border:none; color:#0a0a0f;
+      padding:6px 14px; border-radius:50px; cursor:pointer;
+      font-size:0.82rem; font-weight:600;
+    ">Sign up</button>
+    <button id="authLoginBtn" style="
+      background:none; border:1px solid var(--border); color:var(--text);
+      padding:6px 14px; border-radius:50px; cursor:pointer; font-size:0.82rem;
+    ">Log in</button>
     <button id="historyBtn" style="
       background:none; border:none; color:var(--muted);
       cursor:pointer; font-size:0.82rem; display:none;
@@ -161,28 +208,32 @@ function injectAuthBar() {
   `;
   document.body.appendChild(bar);
 
-  document.getElementById("authActionBtn").addEventListener("click", () => {
+  document.getElementById("authSignupBtn").addEventListener("click", () => showAuthModal("signup"));
+  document.getElementById("authLoginBtn").addEventListener("click", () => {
     if (getToken()) logout();
-    else showAuthModal("signup");
+    else showAuthModal("login");
   });
-
   document.getElementById("historyBtn").addEventListener("click", showHistoryPanel);
 }
 
 function updateAuthUI(user) {
-  const greeting   = document.getElementById("authGreeting");
-  const actionBtn  = document.getElementById("authActionBtn");
-  const historyBtn = document.getElementById("historyBtn");
+  const greeting  = document.getElementById("authGreeting");
+  const signupBtn = document.getElementById("authSignupBtn");
+  const loginBtn  = document.getElementById("authLoginBtn");
+  const histBtn   = document.getElementById("historyBtn");
+  if (!greeting) return;
 
   if (user) {
     const name = user.user_metadata?.display_name || user.email?.split("@")[0] || "User";
-    greeting.textContent  = `Hi, ${name}`;
-    actionBtn.textContent = "Log out";
-    historyBtn.style.display = "inline";
+    greeting.textContent    = `Hi, ${name}`;
+    loginBtn.textContent    = "Log out";
+    signupBtn.style.display = "none";
+    histBtn.style.display   = "inline";
   } else {
-    greeting.textContent  = "";
-    actionBtn.textContent = "Sign up / Log in";
-    historyBtn.style.display = "none";
+    greeting.textContent    = "";
+    loginBtn.textContent    = "Log in";
+    signupBtn.style.display = "inline";
+    histBtn.style.display   = "none";
   }
 }
 
@@ -191,27 +242,42 @@ function showAuthModal(mode = "login") {
   const existing = document.getElementById("authModal");
   if (existing) existing.remove();
 
-  const modal = document.createElement("div");
+  const isLogin = mode === "login";
+  const modal   = document.createElement("div");
   modal.id = "authModal";
   modal.style.cssText = `
-    position:fixed; inset:0; background:rgba(0,0,0,0.7);
-    display:flex; align-items:center; justify-content:center; z-index:1000;
-    padding: 20px;
+    position:fixed; inset:0; background:rgba(0,0,0,0.75);
+    display:flex; align-items:center; justify-content:center;
+    z-index:1000; padding:20px;
   `;
-
-  const isLogin = mode === "login";
   modal.innerHTML = `
     <div style="
       background:var(--surface); border:1px solid var(--border);
-      border-radius:16px; padding:36px; width:360px; max-width:90vw;
+      border-radius:18px; padding:36px 32px; width:360px; max-width:92vw;
       font-family:var(--font-body); position:relative;
+      box-shadow:0 20px 60px rgba(0,0,0,0.5);
     ">
-      <h2 style="font-family:var(--font-head);font-size:1.3rem;margin-bottom:24px;">
-        ${isLogin ? "Log in" : "Create account"}
-      </h2>
+      <!-- Tab bar: Log in / Sign up -->
+      <div style="display:flex; margin-bottom:28px; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+        <button id="tab_login" style="
+          flex:1; padding:10px; border:none; cursor:pointer; font-size:0.9rem;
+          font-family:var(--font-body);
+          background:${isLogin ? "var(--accent)" : "transparent"};
+          color:${isLogin ? "#0a0a0f" : "var(--muted)"};
+          font-weight:${isLogin ? 600 : 400};
+        ">Log in</button>
+        <button id="tab_signup" style="
+          flex:1; padding:10px; border:none; cursor:pointer; font-size:0.9rem;
+          font-family:var(--font-body);
+          background:${!isLogin ? "var(--accent)" : "transparent"};
+          color:${!isLogin ? "#0a0a0f" : "var(--muted)"};
+          font-weight:${!isLogin ? 600 : 400};
+        ">Sign up</button>
+      </div>
 
+      <!-- Google -->
       <button id="m_google" style="${googleBtnStyle()}">
-        <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
           <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
           <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -221,61 +287,65 @@ function showAuthModal(mode = "login") {
       </button>
 
       <div style="display:flex;align-items:center;gap:10px;margin:14px 0;">
-        <hr style="flex:1;border:none;border-top:1px solid var(--border);" />
+        <hr style="flex:1;border:none;border-top:1px solid var(--border)"/>
         <span style="color:var(--muted);font-size:0.78rem;">or email</span>
-        <hr style="flex:1;border:none;border-top:1px solid var(--border);" />
+        <hr style="flex:1;border:none;border-top:1px solid var(--border)"/>
       </div>
 
-      ${!isLogin ? `<input id="m_name" type="text" placeholder="Display name"
+      ${!isLogin ? `<input id="m_name" type="text" placeholder="Display name (optional)"
         style="${inputStyle()}" />` : ""}
-
-      <input id="m_email" type="email" placeholder="Email"
+      <input id="m_email" type="email" placeholder="Email address"
         style="${inputStyle()}" />
-      <input id="m_pass" type="password" placeholder="Password"
+      <input id="m_pass" type="password" placeholder="Password (min 6 chars)"
         style="${inputStyle()}" />
 
-      <div id="m_err" style="color:var(--accent2);font-size:0.8rem;margin-bottom:12px;min-height:18px;"></div>
+      <div id="m_msg" style="font-size:0.82rem; min-height:20px; margin-bottom:12px; line-height:1.4;"></div>
 
       <button id="m_submit" style="${btnStyle()}">
-        ${isLogin ? "Log in" : "Sign up"}
+        ${isLogin ? "Log in" : "Create account"}
       </button>
 
-      <p style="text-align:center;color:var(--muted);font-size:0.82rem;margin-top:16px;">
-        ${isLogin ? "No account?" : "Already have one?"}
-        <a href="#" id="m_toggle" style="color:var(--accent);text-decoration:none;">
-          ${isLogin ? "Sign up" : "Log in"}
-        </a>
-      </p>
-
       <button id="m_close" style="
-        position:absolute; top:16px; right:20px;
-        background:none; border:none; color:var(--muted);
-        font-size:1.2rem; cursor:pointer;
+        position:absolute; top:14px; right:18px; background:none; border:none;
+        color:var(--muted); font-size:1.3rem; cursor:pointer; line-height:1;
       ">✕</button>
     </div>
   `;
-
   document.body.appendChild(modal);
 
-  const errEl = modal.querySelector("#m_err");
+  const msgEl     = modal.querySelector("#m_msg");
+  const submitBtn = modal.querySelector("#m_submit");
 
+  function showMsg(html, type = "error") {
+    const c = { error: "var(--accent2)", info: "#60a5fa", success: "#4ade80" };
+    msgEl.style.color = c[type] || c.error;
+    msgEl.innerHTML = html;
+  }
+
+  // Tab switch
+  modal.querySelector("#tab_login").addEventListener("click",  () => { modal.remove(); showAuthModal("login"); });
+  modal.querySelector("#tab_signup").addEventListener("click", () => { modal.remove(); showAuthModal("signup"); });
+  // Close
   modal.querySelector("#m_close").addEventListener("click", () => modal.remove());
-  modal.querySelector("#m_toggle").addEventListener("click", (e) => {
-    e.preventDefault();
-    modal.remove();
-    showAuthModal(isLogin ? "signup" : "login");
-  });
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
 
+  // Google button
   modal.querySelector("#m_google").addEventListener("click", async () => {
-    errEl.textContent = "";
+    msgEl.innerHTML = "";
     try { await loginWithGoogle(); }
-    catch (err) { errEl.textContent = err.message; }
+    catch (err) { showMsg(err.message, "error"); }
   });
 
+  // Email / password submit
   modal.querySelector("#m_submit").addEventListener("click", async () => {
     const email = modal.querySelector("#m_email").value.trim();
     const pass  = modal.querySelector("#m_pass").value;
-    errEl.textContent = "";
+    if (!email || !pass) { showMsg("Please fill in email and password.", "error"); return; }
+
+    msgEl.innerHTML    = "";
+    submitBtn.disabled = true;
+    submitBtn.textContent = isLogin ? "Logging in…" : "Creating account…";
+
     try {
       let user;
       if (isLogin) {
@@ -284,13 +354,40 @@ function showAuthModal(mode = "login") {
         const name = modal.querySelector("#m_name")?.value.trim() || "";
         user = await signup(email, pass, name);
       }
+
+      // ── SUCCESS: update top bar, close modal — user stays on main page ──
       updateAuthUI(user);
       modal.remove();
-      redirectToMainPage();
+
     } catch (err) {
-      errEl.textContent = err.message;
+      if (err.message === EMAIL_VERIFY_SENTINEL) {
+        showMsg(
+          `✉️ <strong>Check your inbox!</strong><br>
+          A verification link was sent to <em>${escHtml(err.email || email)}</em>.<br>
+          Click it, then come back here to log in.<br><br>
+          <a href="#" id="resendLink" style="color:#60a5fa;text-decoration:underline;">
+            Didn't get the email? Resend it
+          </a>`,
+          "info"
+        );
+        document.getElementById("resendLink")?.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const { error: re } = await _supabase.auth.resend({ type: "signup", email: err.email || email });
+          showMsg(
+            re ? "Could not resend. Try signing up again." : "✓ Verification email resent! Check your inbox.",
+            re ? "error" : "success"
+          );
+        });
+      } else {
+        showMsg(err.message, "error");
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isLogin ? "Log in" : "Create account";
     }
   });
+
+  setTimeout(() => modal.querySelector("#m_email")?.focus(), 50);
 }
 
 // ── History Panel ─────────────────────────────────────────────────────────────
@@ -305,11 +402,22 @@ async function showHistoryPanel() {
     background:var(--surface); border:1px solid var(--border);
     border-radius:14px; padding:20px; z-index:998;
     font-family:var(--font-body); font-size:0.85rem;
-    max-height:70vh; overflow-y:auto;
+    max-height:70vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.4);
   `;
-  panel.innerHTML = `<h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;">Recent Searches</h3>
-    <div id="historyList"><em style="color:var(--muted)">Loading…</em></div>`;
+  panel.innerHTML = `
+    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;">Recent Searches</h3>
+    <div id="historyList"><em style="color:var(--muted)">Loading…</em></div>
+  `;
   document.body.appendChild(panel);
+
+  setTimeout(() => {
+    document.addEventListener("click", function closer(e) {
+      if (!panel.contains(e.target) && e.target.id !== "historyBtn") {
+        panel.remove();
+        document.removeEventListener("click", closer);
+      }
+    });
+  }, 0);
 
   try {
     const history = await getSearchHistory();
@@ -318,13 +426,11 @@ async function showHistoryPanel() {
       list.innerHTML = `<p style="color:var(--muted)">No searches yet.</p>`;
     } else {
       list.innerHTML = history.map(h => `
-        <div style="
-          padding:10px 0; border-bottom:1px solid var(--border);
-          cursor:pointer; color:var(--text);
-        " onclick="document.getElementById('queryInput').value='${escHtml(h.query)}';
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;color:var(--text);"
+          onclick="document.getElementById('queryInput').value='${escHtml(h.query)}';
                    document.getElementById('historyPanel').remove();">
-          <strong>${escHtml(h.query)}</strong>
-          <br><span style="color:var(--muted);font-size:0.78rem;">
+          <strong>${escHtml(h.query)}</strong><br>
+          <span style="color:var(--muted);font-size:0.78rem;">
             ${(h.platforms || []).join(", ")} · ${h.result_count} results ·
             ${new Date(h.searched_at).toLocaleDateString()}
           </span>
@@ -332,43 +438,39 @@ async function showHistoryPanel() {
       `).join("");
     }
   } catch {
-    document.getElementById("historyList").innerHTML = `<p style="color:var(--accent2)">Failed to load.</p>`;
+    document.getElementById("historyList").innerHTML =
+      `<p style="color:var(--accent2)">Failed to load history.</p>`;
   }
 }
 
-// ── Wishlist buttons on cards ─────────────────────────────────────────────────
+// ── Wishlist save buttons on result cards ─────────────────────────────────────
 async function attachWishlistButtons() {
   if (!getToken()) return;
 
-  let wishlists = await getWishlists();
-  if (!wishlists.length) {
-    const def = await createWishlist("My Wishlist");
-    wishlists = [def];
-  }
-  const defaultList = wishlists[0];
+  let wishlists;
+  try {
+    wishlists = await getWishlists();
+    if (!wishlists.length) {
+      const def = await createWishlist("My Wishlist");
+      wishlists = [def];
+    }
+  } catch { return; }
 
+  const defaultList = wishlists[0];
   document.querySelectorAll(".card").forEach((card) => {
     if (card.querySelector(".save-btn")) return;
     const btn = document.createElement("button");
     btn.className = "save-btn";
     btn.textContent = "♡ Save";
     btn.style.cssText = `
-      background:none; border:1px solid var(--border);
-      color:var(--muted); padding:6px; border-radius:8px;
-      font-size:0.78rem; cursor:pointer; margin-top:6px; width:100%;
-      transition: border-color 0.2s, color 0.2s;
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:6px; border-radius:8px; font-size:0.78rem; cursor:pointer;
+      margin-top:6px; width:100%; transition:border-color 0.2s,color 0.2s;
     `;
-    btn.addEventListener("mouseenter", () => {
-      btn.style.borderColor = "var(--accent)";
-      btn.style.color = "var(--accent)";
-    });
+    btn.addEventListener("mouseenter", () => { btn.style.borderColor = "var(--accent)"; btn.style.color = "var(--accent)"; });
     btn.addEventListener("mouseleave", () => {
-      if (!btn.dataset.saved) {
-        btn.style.borderColor = "var(--border)";
-        btn.style.color = "var(--muted)";
-      }
+      if (!btn.dataset.saved) { btn.style.borderColor = "var(--border)"; btn.style.color = "var(--muted)"; }
     });
-
     btn.addEventListener("click", async () => {
       try {
         await addToWishlist(defaultList.id, {
@@ -378,15 +480,10 @@ async function attachWishlistButtons() {
           image:    card.querySelector(".card-img")?.src              || null,
           url:      card.querySelector(".card-link")?.href            || null,
         });
-        btn.textContent = "♥ Saved";
-        btn.dataset.saved = "1";
-        btn.style.borderColor = "var(--accent)";
-        btn.style.color = "var(--accent)";
-      } catch {
-        btn.textContent = "Failed";
-      }
+        btn.textContent = "♥ Saved"; btn.dataset.saved = "1";
+        btn.style.borderColor = "var(--accent)"; btn.style.color = "var(--accent)";
+      } catch { btn.textContent = "Failed"; }
     });
-
     card.querySelector(".card-body").appendChild(btn);
   });
 }
@@ -395,7 +492,8 @@ async function attachWishlistButtons() {
 function inputStyle() {
   return `width:100%; background:var(--surface2); border:1px solid var(--border);
     color:var(--text); padding:10px 14px; border-radius:10px; font-size:0.9rem;
-    font-family:var(--font-body); outline:none; margin-bottom:12px; display:block;`;
+    font-family:var(--font-body); outline:none; margin-bottom:12px; display:block;
+    box-sizing:border-box;`;
 }
 function btnStyle() {
   return `width:100%; background:var(--accent); color:#0a0a0f; border:none;
@@ -409,20 +507,12 @@ function googleBtnStyle() {
     display:flex; align-items:center; justify-content:center; gap:10px;`;
 }
 function escHtml(s) {
-  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return String(s || "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function redirectToMainPage() {
-  const mainPageUrl = getAuthRedirectUrl();
-  const currentUrl = new URL(window.location.href);
-  currentUrl.search = "";
-  currentUrl.hash = "";
-  if (currentUrl.href !== mainPageUrl) {
-    window.location.assign(mainPageUrl);
-  }
-}
-
-// ── Google OAuth callback — token arrives in URL hash ─────────────────────────
+// ── Google OAuth callback — token comes back in URL hash ──────────────────────
 async function handleOAuthCallback() {
   const hash = window.location.hash;
   if (hash.includes("access_token=")) {
@@ -431,22 +521,21 @@ async function handleOAuthCallback() {
     if (token) {
       saveToken(token);
       history.replaceState(null, "", window.location.pathname);
-      redirectToMainPage();
       return await getMe();
     }
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const err    = params.get("auth_error");
+  const qp  = new URLSearchParams(window.location.search);
+  const err = qp.get("auth_error") || qp.get("error_description");
   if (err) {
     history.replaceState(null, "", window.location.pathname);
-    if (typeof showError === "function") showError(`Google sign-in failed: ${err}`);
+    if (typeof showError === "function") showError(`Sign-in failed: ${err}`);
   }
 
   return null;
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
 (async () => {
   injectAuthBar();
   const oauthUser = await handleOAuthCallback();
