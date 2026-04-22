@@ -18,11 +18,9 @@ function authHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-// Builds the URL Supabase should redirect back to after OAuth / email confirm.
-// Always points to index.html on the current origin — avoids falling back to
-// whatever Supabase has set as its "Site URL" (often a stale localhost).
+// Builds the URL Supabase should redirect back to after Google OAuth.
 function getAuthRedirectUrl() {
-  if (window.location.protocol === "file:") return null; // can't redirect to file://
+  if (window.location.protocol === "file:") return null;
   const url = new URL(window.location.href);
   url.pathname = url.pathname.endsWith("/")
     ? url.pathname + "index.html"
@@ -32,30 +30,18 @@ function getAuthRedirectUrl() {
   return url.href;
 }
 
-// Sentinel value: thrown by signup/login when email verification is required,
-// so the modal can show a green info message instead of a red error.
-const EMAIL_VERIFY_SENTINEL = "__VERIFY_EMAIL__";
-
 // ── Auth functions ────────────────────────────────────────────────────────────
 async function signup(email, password, displayName) {
   if (!_supabase) throw new Error("Supabase not loaded. Refresh the page.");
 
-  const redirectUrl = getAuthRedirectUrl();
   const { data, error } = await _supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { display_name: displayName || "" },
-      ...(redirectUrl ? { emailRedirectTo: redirectUrl } : {}),
-    },
+    options: { data: { display_name: displayName || "" } },
   });
   if (error) throw new Error(error.message);
-
   if (!data.session?.access_token) {
-    // Email confirmation required — throw sentinel (not a real error)
-    const e = new Error(EMAIL_VERIFY_SENTINEL);
-    e.email = email;
-    throw e;
+    throw new Error("Account created but email confirmation is still enabled in Supabase. Go to Supabase Dashboard → Authentication → Providers → Email and turn off \"Confirm email\".");
   }
 
   saveToken(data.session.access_token);
@@ -66,25 +52,9 @@ async function login(email, password) {
   if (!_supabase) throw new Error("Supabase not loaded. Refresh the page.");
 
   const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-
-  if (error) {
-    // Supabase returns "Invalid login credentials" for BOTH wrong password and
-    // unverified email. Try resend() — if it succeeds, email exists but isn't
-    // confirmed; if it fails, credentials are genuinely wrong.
-    if (
-      error.message.includes("Invalid login credentials") ||
-      error.message.toLowerCase().includes("confirm") ||
-      error.message.toLowerCase().includes("email")
-    ) {
-      const { error: resendErr } = await _supabase.auth.resend({ type: "signup", email });
-      if (!resendErr) {
-        const e = new Error(EMAIL_VERIFY_SENTINEL);
-        e.email = email;
-        throw e;
-      }
-    }
-    throw new Error(error.message || "Login failed. Check your email and password.");
-  }
+  if (error) throw new Error(error.message.includes("Invalid login credentials")
+    ? "Incorrect email or password."
+    : error.message || "Login failed.");
 
   saveToken(data.session.access_token);
   return data.user;
@@ -360,27 +330,7 @@ function showAuthModal(mode = "login") {
       modal.remove();
 
     } catch (err) {
-      if (err.message === EMAIL_VERIFY_SENTINEL) {
-        showMsg(
-          `✉️ <strong>Check your inbox!</strong><br>
-          A verification link was sent to <em>${escHtml(err.email || email)}</em>.<br>
-          Click it, then come back here to log in.<br><br>
-          <a href="#" id="resendLink" style="color:#60a5fa;text-decoration:underline;">
-            Didn't get the email? Resend it
-          </a>`,
-          "info"
-        );
-        document.getElementById("resendLink")?.addEventListener("click", async (e) => {
-          e.preventDefault();
-          const { error: re } = await _supabase.auth.resend({ type: "signup", email: err.email || email });
-          showMsg(
-            re ? "Could not resend. Try signing up again." : "✓ Verification email resent! Check your inbox.",
-            re ? "error" : "success"
-          );
-        });
-      } else {
-        showMsg(err.message, "error");
-      }
+      showMsg(err.message, "error");
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = isLogin ? "Log in" : "Create account";
