@@ -21,8 +21,19 @@ function authHeaders() {
 }
 
 function getAuthRedirectUrl() {
-  // Force callbacks to this page to avoid falling back to Supabase default Site URL (often localhost).
-  return new URL("index.html", window.location.href).href;
+  // Force callbacks to this app entry page to avoid falling back to Supabase default Site URL (often localhost).
+  const current = new URL(window.location.href);
+  const parts = current.pathname.split("/");
+  const lastPart = parts[parts.length - 1];
+  if (!lastPart || !lastPart.includes(".")) {
+    parts.push("index.html");
+  } else {
+    parts[parts.length - 1] = "index.html";
+  }
+  current.pathname = parts.join("/").replace(/\/{2,}/g, "/");
+  current.search = "";
+  current.hash = "";
+  return current.href;
 }
 
 // ── Auth API calls ────────────────────────────────────────────────────────────
@@ -406,8 +417,10 @@ function escHtml(s) {
 
 function redirectToMainPage() {
   const mainPageUrl = getAuthRedirectUrl();
-  const currentUrl = window.location.origin + window.location.pathname;
-  if (currentUrl !== mainPageUrl) {
+  const currentUrl = new URL(window.location.href);
+  currentUrl.search = "";
+  currentUrl.hash = "";
+  if (currentUrl.href !== mainPageUrl) {
     window.location.assign(mainPageUrl);
   }
 }
