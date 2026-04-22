@@ -2,17 +2,10 @@
 const API_BASE = "http://localhost:5000/api";
 
 const PLATFORM_META = {
-<<<<<<< HEAD
-  amazon:   { label: "Amazon",   icon: "🛒" },
-  flipkart: { label: "Flipkart", icon: "🛍️" },
-  google:   { label: "Google",   icon: "🔎" },
-  // Add more here as you add APIs in the backend
-=======
   amazon:          { label: "Amazon",          icon: "🛒" },
   flipkart:        { label: "Flipkart",        icon: "🛍️" },
   ebay:            { label: "eBay",            icon: "🏷️" },
   google_shopping: { label: "Google Shopping", icon: "🔍" },
->>>>>>> 4273175 (Fix search UX, auth bugs, and Supabase integration)
 };
 
 const ALL_PLATFORMS = Object.keys(PLATFORM_META);
@@ -39,24 +32,7 @@ const bestDealText = document.getElementById("bestDealText");
 const resetBtn     = document.getElementById("resetBtn");
 const errorToast   = document.getElementById("errorToast");
 
-<<<<<<< HEAD
-// ── Init ─────────────────────────────────────────────────────────────────────
-async function init() {
-  try {
-    const res  = await fetch(`${API_BASE}/search/platforms`);
-    const data = await res.json();
-    state.availablePlatforms = data.platforms || [];
-  } catch {
-    // If backend isn't reachable yet, fall back to defaults
-    state.availablePlatforms = ["amazon", "flipkart", "google"];
-  }
-}
-init();
-
-// ── STEP 1: Search ────────────────────────────────────────────────────────────
-=======
 // ── Search — searches ALL platforms automatically ─────────────────────────────
->>>>>>> 4273175 (Fix search UX, auth bugs, and Supabase integration)
 searchForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const q = queryInput.value.trim();
@@ -73,48 +49,7 @@ function setSearchLoading(loading) {
   searchBtn.disabled = loading;
 }
 
-<<<<<<< HEAD
-// ── STEP 2: Platform picker ───────────────────────────────────────────────────
-function renderPlatformPicker() {
-  platformGrid.innerHTML = "";
-  state.selectedPlatforms.clear();
-
-  state.availablePlatforms.forEach((key) => {
-    const meta   = PLATFORM_META[key] || { label: key, icon: "🔗" };
-    const chip   = document.createElement("label");
-    chip.className = "platform-chip";
-    chip.dataset.key = key;
-    chip.innerHTML = `
-      <input type="checkbox" value="${key}" />
-      <span class="chip-icon">${meta.icon}</span>
-      <span class="chip-label">${meta.label}</span>
-    `;
-    const input = chip.querySelector("input");
-    input.addEventListener("change", (e) => {
-      if (e.target.checked) {
-        state.selectedPlatforms.add(key);
-        chip.classList.add("selected");
-      } else {
-        state.selectedPlatforms.delete(key);
-        chip.classList.remove("selected");
-      }
-    });
-    platformGrid.appendChild(chip);
-  });
-}
-
-compareBtn.addEventListener("click", async () => {
-  if (state.selectedPlatforms.size === 0) {
-    showError("Please select at least one platform.");
-    return;
-  }
-  await runComparison();
-});
-
-// ── STEP 3: Comparison ────────────────────────────────────────────────────────
-=======
 // ── Comparison ────────────────────────────────────────────────────────────────
->>>>>>> 4273175 (Fix search UX, auth bugs, and Supabase integration)
 async function runComparison() {
   setSearchLoading(true);
 

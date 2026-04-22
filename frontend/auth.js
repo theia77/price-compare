@@ -20,13 +20,29 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function getAuthRedirectUrl() {
+  // Force callbacks to this app entry page to avoid falling back to Supabase default Site URL (often localhost).
+  const current = new URL(window.location.href);
+  if (current.pathname.endsWith("/")) {
+    current.pathname = `${current.pathname}index.html`;
+  } else {
+    current.pathname = current.pathname.replace(/\/[^/]*$/, "/index.html");
+  }
+  current.search = "";
+  current.hash = "";
+  return current.href;
+}
+
 // ── Auth API calls ────────────────────────────────────────────────────────────
 async function signup(email, password, displayName) {
   if (!_supabase) throw new Error("Auth not configured");
   const { data, error } = await _supabase.auth.signUp({
     email,
     password,
-    options: { data: { display_name: displayName || "" } },
+    options: {
+      data: { display_name: displayName || "" },
+      emailRedirectTo: getAuthRedirectUrl(),
+    },
   });
   if (error) throw new Error(error.message);
   if (!data.session?.access_token) {
@@ -46,10 +62,9 @@ async function login(email, password) {
 
 async function loginWithGoogle() {
   if (!_supabase) throw new Error("Auth not configured");
-  const redirectTo = window.location.origin + window.location.pathname;
   const { data, error } = await _supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo },
+    options: { redirectTo: getAuthRedirectUrl() },
   });
   if (error) throw new Error(error.message || "Google login failed");
   if (data?.url) window.location.href = data.url;
@@ -62,8 +77,19 @@ async function logout() {
 }
 
 async function getMe() {
-  if (!getToken() || !_supabase) return null;
-  const { data, error } = await _supabase.auth.getUser(getToken());
+  if (!_supabase) return null;
+  let token = getToken();
+  if (!token) {
+    const { data, error } = await _supabase.auth.getSession();
+    if (error) {
+      console.error("Failed to restore auth session:", error.message);
+      return null;
+    }
+    token = data?.session?.access_token || null;
+    if (token) saveToken(token);
+  }
+  if (!token) return null;
+  const { data, error } = await _supabase.auth.getUser(token);
   if (error || !data?.user) { clearToken(); return null; }
   return data.user;
 }
@@ -387,9 +413,12 @@ function escHtml(s) {
 }
 
 function redirectToMainPage() {
-  const mainPageUrl = new URL("index.html", window.location.href);
-  if (window.location.pathname !== mainPageUrl.pathname) {
-    window.location.assign(mainPageUrl.href);
+  const mainPageUrl = getAuthRedirectUrl();
+  const currentUrl = new URL(window.location.href);
+  currentUrl.search = "";
+  currentUrl.hash = "";
+  if (currentUrl.href !== mainPageUrl) {
+    window.location.assign(mainPageUrl);
   }
 }
 
