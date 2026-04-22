@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PriceScout — Compare Prices Across Platforms</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <div class="noise"></div>
+
+  <header>
+    <div class="logo">Price<span>Scout</span></div>
+    <p class="tagline">One search. Every price. Zero guessing.</p>
+  </header>
+
+  <main>
+    <!-- STEP 1: Search -->
+    <section class="search-section" id="step-search">
+      <form id="searchForm">
+        <div class="search-bar">
+          <input
+            type="text"
+            id="queryInput"
+            placeholder="Search for a product…"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="searchBtn">
+            <span class="btn-text">Search</span>
+            <span class="btn-loader hidden">⟳</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- STEP 2: Platform Picker (shown after search returns) -->
+    <section class="platform-section hidden" id="step-platforms">
+      <h2>Choose platforms to compare</h2>
+      <div class="platform-grid" id="platformGrid">
+        <!-- Populated by JS -->
+      </div>
+      <button class="compare-btn" id="compareBtn">Compare Prices →</button>
+    </section>
+
+    <!-- STEP 3: Results -->
+    <section class="results-section hidden" id="step-results">
+      <div class="results-header">
+        <h2>Results for <span id="resultsQuery"></span></h2>
+        <button class="reset-btn" id="resetBtn">New Search</button>
+      </div>
+
+      <!-- Platform tabs -->
+      <div class="tabs" id="tabs"></div>
+
+      <!-- Cards grid -->
+      <div class="cards-grid" id="cardsGrid"></div>
+
+      <!-- Best deal banner -->
+      <div class="best-deal hidden" id="bestDeal">
+        <span class="deal-label">🏆 Best Deal</span>
+        <span id="bestDealText"></span>
+      </div>
+    </section>
+
+    <div class="error-toast hidden" id="errorToast"></div>
+  </main>
+
+  <footer>
+    <p>Prices fetched live via RapidAPI · Not affiliated with any retailer</p>
+  </footer>
+
+  <script src="app.js"></script>
+  <script src="auth.js"></script>
+</body>
+</html>
