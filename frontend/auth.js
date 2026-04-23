@@ -3,7 +3,7 @@
 
 const API = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   ? "http://localhost:5000/api"
-  : "https://price-compare-backend.onrender.com/api";  // ← update after backend deploy
+  : "https://price-compare-iloj.onrender.com/api";
 
 // ── Supabase client (anon key — safe to expose in frontend) ──────────────────
 const _supabase = window.supabase?.createClient(
