@@ -13,8 +13,9 @@ const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
+  "https://price-compare-sooty.vercel.app",
   "http://localhost:3000",
-  "http://127.0.0.1:5500",  // VS Code Live Server
+  "http://127.0.0.1:5500",
   "http://localhost:5500",
 ];
 

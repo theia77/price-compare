@@ -1,5 +1,8 @@
 // ── Config ──────────────────────────────────────────────────────────────────
-const API_BASE = "http://localhost:5000/api";
+// Use deployed backend in production, localhost in dev
+const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ? "http://localhost:5000/api"
+  : "https://price-compare-backend.onrender.com/api";  // ← update after backend deploy
 
 const PLATFORM_META = {
   amazon:          { label: "Amazon",          icon: "🛒" },
