@@ -59,7 +59,10 @@ async function runComparison() {
   try {
     const res = await fetch(`${API_BASE}/search`, {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(typeof authHeaders === "function" ? authHeaders() : {}),
+      },
       body: JSON.stringify({
         query:     state.query,
         platforms: ALL_PLATFORMS,

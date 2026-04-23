@@ -175,6 +175,11 @@ function injectAuthBar() {
       background:none; border:none; color:var(--muted);
       cursor:pointer; font-size:0.82rem; display:none;
     ">History</button>
+    <button id="wishlistBtn" style="
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:6px 14px; border-radius:50px; cursor:pointer;
+      font-size:0.82rem; display:none;
+    ">♡ Wishlist</button>
   `;
   document.body.appendChild(bar);
 
@@ -184,6 +189,7 @@ function injectAuthBar() {
     else showAuthModal("login");
   });
   document.getElementById("historyBtn").addEventListener("click", showHistoryPanel);
+  document.getElementById("wishlistBtn").addEventListener("click", showWishlistPanel);
 }
 
 function updateAuthUI(user) {
@@ -193,17 +199,20 @@ function updateAuthUI(user) {
   const histBtn   = document.getElementById("historyBtn");
   if (!greeting) return;
 
+  const wishBtn = document.getElementById("wishlistBtn");
   if (user) {
     const name = user.user_metadata?.display_name || user.email?.split("@")[0] || "User";
     greeting.textContent    = `Hi, ${name}`;
     loginBtn.textContent    = "Log out";
     signupBtn.style.display = "none";
     histBtn.style.display   = "inline";
+    if (wishBtn) wishBtn.style.display = "inline";
   } else {
     greeting.textContent    = "";
     loginBtn.textContent    = "Log in";
     signupBtn.style.display = "inline";
     histBtn.style.display   = "none";
+    if (wishBtn) wishBtn.style.display = "none";
   }
 }
 
@@ -390,6 +399,99 @@ async function showHistoryPanel() {
   } catch {
     document.getElementById("historyList").innerHTML =
       `<p style="color:var(--accent2)">Failed to load history.</p>`;
+  }
+}
+
+// ── Wishlist Panel ────────────────────────────────────────────────────────────
+async function showWishlistPanel() {
+  const existing = document.getElementById("wishlistPanel");
+  if (existing) { existing.remove(); return; }
+
+  const panel = document.createElement("div");
+  panel.id = "wishlistPanel";
+  panel.style.cssText = `
+    position:fixed; top:50px; right:16px; width:340px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:20px; z-index:998;
+    font-family:var(--font-body); font-size:0.85rem;
+    max-height:75vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+  `;
+  panel.innerHTML = `
+    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;">♡ My Wishlist</h3>
+    <div id="wishlistItems"><em style="color:var(--muted)">Loading…</em></div>
+  `;
+  document.body.appendChild(panel);
+
+  setTimeout(() => {
+    document.addEventListener("click", function closer(e) {
+      if (!panel.contains(e.target) && e.target.id !== "wishlistBtn") {
+        panel.remove();
+        document.removeEventListener("click", closer);
+      }
+    });
+  }, 0);
+
+  try {
+    const wishlists = await getWishlists();
+    const container = document.getElementById("wishlistItems");
+
+    if (!wishlists.length) {
+      container.innerHTML = `<p style="color:var(--muted)">No wishlists yet. Save items from search results.</p>`;
+      return;
+    }
+
+    let allItems = [];
+    for (const wl of wishlists) {
+      const res  = await fetch(`${API}/wishlist/${wl.id}/items`, { headers: authHeaders() });
+      const data = await res.json();
+      allItems = allItems.concat((data.items || []).map(item => ({ ...item, _wlName: wl.name })));
+    }
+
+    if (!allItems.length) {
+      container.innerHTML = `<p style="color:var(--muted)">No saved items yet. Hit ♡ Save on any product card.</p>`;
+      return;
+    }
+
+    container.innerHTML = allItems.map(item => `
+      <div id="witem-${escHtml(item.id)}" style="
+        display:flex; gap:10px; padding:10px 0;
+        border-bottom:1px solid var(--border); align-items:flex-start;
+      ">
+        ${item.image
+          ? `<img src="${escHtml(item.image)}" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:8px;background:var(--surface2);" onerror="this.style.display='none'">`
+          : `<div style="width:52px;height:52px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;">🖼️</div>`
+        }
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(item.title)}">${escHtml(item.title)}</div>
+          <div style="color:var(--accent);font-weight:700;margin:2px 0;">${escHtml(item.price || "N/A")}</div>
+          <div style="color:var(--muted);font-size:0.75rem;">${escHtml(item.platform)} · ${escHtml(item._wlName)}</div>
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            ${item.product_url ? `<a href="${escHtml(item.product_url)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.78rem;text-decoration:none;">View ↗</a>` : ""}
+            <button onclick="removeWishlistItem('${escHtml(item.id)}')" style="
+              background:none;border:none;color:var(--accent2);
+              font-size:0.78rem;cursor:pointer;padding:0;
+            ">Remove</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+  } catch {
+    document.getElementById("wishlistItems").innerHTML =
+      `<p style="color:var(--accent2)">Failed to load wishlist.</p>`;
+  }
+}
+
+async function removeWishlistItem(itemId) {
+  try {
+    await removeFromWishlist(itemId);
+    const el = document.getElementById(`witem-${itemId}`);
+    if (el) el.remove();
+    const container = document.getElementById("wishlistItems");
+    if (container && !container.querySelector("[id^='witem-']")) {
+      container.innerHTML = `<p style="color:var(--muted)">No saved items yet. Hit ♡ Save on any product card.</p>`;
+    }
+  } catch {
+    /* silent fail */
   }
 }
 
