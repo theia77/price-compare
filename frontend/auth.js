@@ -24,11 +24,9 @@ function authHeaders() {
 function getAuthRedirectUrl() {
   if (window.location.protocol === "file:") return null;
   const url = new URL(window.location.href);
-  url.pathname = url.pathname.endsWith("/")
-    ? url.pathname + "index.html"
-    : url.pathname.replace(/\/[^/]*$/, "/index.html");
-  url.search = "";
-  url.hash   = "";
+  url.pathname = "/";
+  url.search   = "";
+  url.hash     = "";
   return url.href;
 }
 
