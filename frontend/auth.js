@@ -150,38 +150,21 @@ async function getSearchHistory() {
   } catch { return []; }
 }
 
-// ── Auth bar (top-right) ──────────────────────────────────────────────────────
+// ── Auth bar (injected into navbar #navAuthSlot) ──────────────────────────────
 function injectAuthBar() {
+  const slot = document.getElementById("navAuthSlot");
+  if (!slot) return;
+
   const bar = document.createElement("div");
   bar.id = "authBar";
-  bar.style.cssText = `
-    position:fixed; top:0; right:0;
-    display:flex; align-items:center; gap:10px;
-    padding:10px 20px; z-index:999;
-    font-family:var(--font-body); font-size:0.85rem;
-  `;
   bar.innerHTML = `
-    <span id="authGreeting" style="color:var(--muted)"></span>
-    <button id="authSignupBtn" style="
-      background:var(--accent); border:none; color:#0a0a0f;
-      padding:6px 14px; border-radius:50px; cursor:pointer;
-      font-size:0.82rem; font-weight:600;
-    ">Sign up</button>
-    <button id="authLoginBtn" style="
-      background:none; border:1px solid var(--border); color:var(--text);
-      padding:6px 14px; border-radius:50px; cursor:pointer; font-size:0.82rem;
-    ">Log in</button>
-    <button id="historyBtn" style="
-      background:none; border:none; color:var(--muted);
-      cursor:pointer; font-size:0.82rem; display:none;
-    ">History</button>
-    <button id="wishlistBtn" style="
-      background:none; border:1px solid var(--border); color:var(--muted);
-      padding:6px 14px; border-radius:50px; cursor:pointer;
-      font-size:0.82rem; display:none;
-    ">♡ Wishlist</button>
+    <span id="authGreeting"></span>
+    <button id="authSignupBtn">Sign up</button>
+    <button id="authLoginBtn">Log in</button>
+    <button id="historyBtn"  style="display:none">History</button>
+    <button id="wishlistBtn" style="display:none">♡ Wishlist</button>
   `;
-  document.body.appendChild(bar);
+  slot.appendChild(bar);
 
   document.getElementById("authSignupBtn").addEventListener("click", () => showAuthModal("signup"));
   document.getElementById("authLoginBtn").addEventListener("click", () => {
@@ -357,14 +340,15 @@ async function showHistoryPanel() {
   const panel = document.createElement("div");
   panel.id = "historyPanel";
   panel.style.cssText = `
-    position:fixed; top:50px; right:16px; width:300px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:14px; padding:20px; z-index:998;
-    font-family:var(--font-body); font-size:0.85rem;
-    max-height:70vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+    position:fixed; top:72px; right:16px; width:300px;
+    background:var(--surface); border:1px solid var(--border-s);
+    border-radius:16px; padding:20px; z-index:998;
+    font-family:var(--font); font-size:0.85rem;
+    max-height:70vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,0.4);
+    backdrop-filter:blur(16px);
   `;
   panel.innerHTML = `
-    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;">Recent Searches</h3>
+    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;font-weight:700;">Recent Searches</h3>
     <div id="historyList"><em style="color:var(--muted)">Loading…</em></div>
   `;
   document.body.appendChild(panel);
@@ -410,14 +394,15 @@ async function showWishlistPanel() {
   const panel = document.createElement("div");
   panel.id = "wishlistPanel";
   panel.style.cssText = `
-    position:fixed; top:50px; right:16px; width:340px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:14px; padding:20px; z-index:998;
-    font-family:var(--font-body); font-size:0.85rem;
-    max-height:75vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+    position:fixed; top:72px; right:16px; width:340px;
+    background:var(--surface); border:1px solid var(--border-s);
+    border-radius:16px; padding:20px; z-index:998;
+    font-family:var(--font); font-size:0.85rem;
+    max-height:75vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,0.4);
+    backdrop-filter:blur(16px);
   `;
   panel.innerHTML = `
-    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;">♡ My Wishlist</h3>
+    <h3 style="font-family:var(--font-head);margin-bottom:14px;font-size:1rem;font-weight:700;">♡ My Wishlist</h3>
     <div id="wishlistItems"><em style="color:var(--muted)">Loading…</em></div>
   `;
   document.body.appendChild(panel);

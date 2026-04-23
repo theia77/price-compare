@@ -1,70 +1,159 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PriceScout — Compare Prices Across Platforms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-  <div class="noise"></div>
+  <!-- ── Navbar ───────────────────────────────────────── -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a class="nav-logo" href="#" onclick="return false;">Price<span>Scout</span></a>
+      <div class="nav-right">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+          <!-- Sun (shown in dark mode, click → light) -->
+          <svg class="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <!-- Moon (shown in light mode, click → dark) -->
+          <svg class="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+        <!-- Auth buttons injected here by auth.js -->
+        <div id="navAuthSlot"></div>
+      </div>
+    </div>
+  </nav>
 
-  <header>
-    <div class="logo">Price<span>Scout</span></div>
-    <p class="tagline">One search. Every price. Zero guessing.</p>
-  </header>
+  <!-- ── Hero ─────────────────────────────────────────── -->
+  <section class="hero" id="hero">
+    <div class="hero-glow"></div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
 
-  <main>
-    <!-- STEP 1: Search -->
-    <section class="search-section" id="step-search">
-      <form id="searchForm">
-        <div class="search-bar">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        Compare prices across 4 platforms instantly
+      </div>
+
+      <h1 class="hero-title">
+        Find the <span class="gradient-text">best deal</span><br class="hero-br"/>
+        every time
+      </h1>
+
+      <p class="hero-sub">
+        One search across Amazon, Flipkart, eBay &amp; Google Shopping.<br/>
+        No fluff. Just the best price.
+      </p>
+
+      <form class="search-form" id="searchForm">
+        <div class="search-wrap" id="searchBar">
+          <svg class="search-ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
           <input
             type="text"
             id="queryInput"
-            placeholder="Search for a product…"
+            class="search-input"
+            placeholder="Search for iPhone 15, laptops, headphones…"
             autocomplete="off"
             required
           />
-          <button type="submit" id="searchBtn">
+          <button type="submit" id="searchBtn" class="search-btn">
             <span class="btn-text">Search</span>
-            <span class="btn-loader hidden">⟳</span>
+            <span class="btn-loader hidden"><span class="spinner-ring"></span></span>
           </button>
         </div>
       </form>
-    </section>
 
-    <!-- Results -->
-    <section class="results-section hidden" id="step-results">
-      <div class="results-header">
-        <h2>Results for <span id="resultsQuery"></span></h2>
-        <button class="reset-btn" id="resetBtn">New Search</button>
+      <div class="hero-platforms">
+        <span>🛒 Amazon</span>
+        <span>🛍️ Flipkart</span>
+        <span>🏷️ eBay</span>
+        <span>🔍 Google Shopping</span>
       </div>
+    </div>
+  </section>
 
-      <!-- Platform tabs -->
-      <div class="tabs" id="tabs"></div>
+  <!-- ── Results ───────────────────────────────────────── -->
+  <section class="results-section hidden" id="step-results">
+    <div class="results-inner">
 
-      <!-- Cards grid -->
-      <div class="cards-grid" id="cardsGrid"></div>
+      <!-- Top bar -->
+      <div class="results-topbar">
+        <div class="results-meta">
+          <h2 class="results-title">Results for <span id="resultsQuery" class="results-query"></span></h2>
+          <p class="results-count" id="resultsCount"></p>
+        </div>
+        <div class="results-actions">
+          <div class="sort-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M3 6h18M7 12h10M11 18h2"/>
+            </svg>
+            <select id="sortSelect" class="sort-select">
+              <option value="default">Relevance</option>
+              <option value="price-asc">Price: Low → High</option>
+              <option value="price-desc">Price: High → Low</option>
+              <option value="rating">Top Rated</option>
+            </select>
+          </div>
+          <button class="reset-btn" id="resetBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+            New Search
+          </button>
+        </div>
+      </div>
 
       <!-- Best deal banner -->
       <div class="best-deal hidden" id="bestDeal">
-        <span class="deal-label">🏆 Best Deal</span>
-        <span id="bestDealText"></span>
+        <div class="deal-trophy">🏆</div>
+        <div class="deal-body">
+          <p class="deal-label">Best Deal Found</p>
+          <p id="bestDealText" class="deal-text"></p>
+        </div>
       </div>
-    </section>
 
-    <div class="error-toast hidden" id="errorToast"></div>
-  </main>
+      <!-- Platform filter pills -->
+      <div class="filter-row" id="tabs"></div>
 
-  <footer>
-    <p>Prices fetched live via RapidAPI · Not affiliated with any retailer</p>
+      <!-- Cards -->
+      <div class="cards-grid" id="cardsGrid"></div>
+
+    </div>
+  </section>
+
+  <!-- ── Footer ────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-logo">Price<span>Scout</span></span>
+      <p class="footer-copy">Prices fetched live via RapidAPI · Not affiliated with any retailer</p>
+    </div>
   </footer>
 
-  <!-- Supabase CDN (provides window.supabase global for auth.js) -->
+  <!-- Error toast -->
+  <div class="error-toast hidden" id="errorToast"></div>
+
+  <!-- Supabase CDN (must load before auth.js) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="app.js"></script>
   <script src="auth.js"></script>
